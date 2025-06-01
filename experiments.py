@@ -14,18 +14,32 @@ from exhaustive_search import exhaustive_search
 from helper_functions import generate_random_matrix
 
 
+"""
+Виправлений експеримент 3.4.1 для experiments.py
+"""
+
+from helper_functions import generate_random_matrix
+
+
 def experiment_3_4_1() -> tuple[list[int], list[float], list[float]]:
     """
     3.4.1.1 — Вплив кількості ітерацій наближеного алгоритму на точність і час.
+    Виправлена версія для кращої демонстрації залежності від ітерацій.
 
     Повертає:
         iteration_values: Список значень максимальної кількості ітерацій.
         deviations: Середні відхилення для кожного значення ітерацій.
         times: Середній час виконання для кожного значення ітерацій.
     """
-    m, n = 6, 6
+    # Імпортуємо локально для уникнення циклічних залежностей
+    from approximate_algorithm import approximate_algorithm
+
+    # Використовуємо більшу матрицю для більш складної задачі
+    m, n = 8, 8  # Збільшили розмір
     num_tasks = 10
-    iteration_values = list(range(10, 210, 20))
+
+    # Більший діапазон ітерацій з меншим кроком для кращої демонстрації
+    iteration_values = [5, 10, 20, 50, 100, 200, 500, 1000, 2000]
 
     deviations: list[float] = []
     times: list[float] = []
@@ -33,20 +47,37 @@ def experiment_3_4_1() -> tuple[list[int], list[float], list[float]]:
     for k in iteration_values:
         total_deviation = 0.0
         total_time = 0.0
-        for _ in range(num_tasks):
-            matrix = generate_random_matrix(m, n, 1, 10)
+
+        print(f"\nТестування з {k} ітераціями...")
+
+        for task_num in range(num_tasks):
+            # Генеруємо більш складні матриці з більшим розкидом значень
+            matrix = generate_random_matrix(m, n, 1, 50)  # Збільшили діапазон
+
             result = approximate_algorithm(
                 matrix,
                 m,
                 n,
                 max_iterations=k,
-                stability_threshold=50,
+                stability_threshold=max(10, k // 10),  # Пропорційний поріг стабільності
                 local_search_type="1",
             )
+
             total_deviation += result["max_dev"]
             total_time += result["execution_time"]
-        deviations.append(total_deviation / num_tasks)
-        times.append(total_time / num_tasks)
+
+            if task_num == 0:  # Виводимо інформацію для першої задачі
+                print(
+                    f"  Задача 1: ітерацій {result['iterations']}, відхилення {result['max_dev']}"
+                )
+
+        avg_deviation = total_deviation / num_tasks
+        avg_time = total_time / num_tasks
+
+        deviations.append(avg_deviation)
+        times.append(avg_time)
+
+        print(f"Середнє відхилення: {avg_deviation:.2f}, середній час: {avg_time:.4f}")
 
     return iteration_values, deviations, times
 
