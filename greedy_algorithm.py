@@ -1,5 +1,5 @@
 """
-greedy_algorithm.py (виправлена версія)
+greedy_algorithm.py (остаточно виправлена версія)
 
 Реалізація жадібного алгоритму розподілу територій між чотирма забудовниками
 із контролем відхилення вартостей та поліпшеною поведінкою відносно ітерацій.
@@ -47,6 +47,26 @@ def _update_stagnation(
     return 0, max_dev
 
 
+def _check_cell_neighbors(
+    assignment_matrix: List[List[int]], i: int, j: int, m: int, n: int
+) -> bool:
+    """Перевіряє, чи має клітинка сусідів з іншими забудовниками."""
+    if assignment_matrix[i][j] == 0:
+        return False
+
+    current_owner = assignment_matrix[i][j]
+    for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        ni, nj = i + di, j + dj
+        if (
+            0 <= ni < m
+            and 0 <= nj < n
+            and assignment_matrix[ni][nj] != 0
+            and assignment_matrix[ni][nj] != current_owner
+        ):
+            return True
+    return False
+
+
 def _find_border_cells(
     assignment_matrix: List[List[int]], m: int, n: int
 ) -> List[Tuple[int, int]]:
@@ -54,18 +74,8 @@ def _find_border_cells(
     border_cells = []
     for i in range(m):
         for j in range(n):
-            if assignment_matrix[i][j] != 0:
-                # Перевіряємо, чи є сусіди з іншими забудовниками
-                for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    ni, nj = i + di, j + dj
-                    if (
-                        0 <= ni < m
-                        and 0 <= nj < n
-                        and assignment_matrix[ni][nj] != 0
-                        and assignment_matrix[ni][nj] != assignment_matrix[i][j]
-                    ):
-                        border_cells.append((i, j))
-                        break
+            if _check_cell_neighbors(assignment_matrix, i, j, m, n):
+                border_cells.append((i, j))
     return border_cells
 
 
@@ -91,21 +101,26 @@ def _get_neighbor_owners(
     return neighbors
 
 
-def _try_improve_cell(
+def _calculate_improvement(
     assignment_matrix: List[List[int]],
     matrix: List[List[int]],
     total_costs: Dict[int, int],
     i: int,
     j: int,
-    m: int,
-    n: int,
 ) -> bool:
-    """Намагається покращити розподіл для конкретної клітинки."""
+    """Обчислює та застосовує покращення для клітинки."""
     current_owner = assignment_matrix[i][j]
     current_cost = matrix[i][j]
     current_max_dev = max(total_costs.values()) - min(total_costs.values())
 
-    neighbors = _get_neighbor_owners(assignment_matrix, i, j, current_owner, m, n)
+    neighbors = _get_neighbor_owners(
+        assignment_matrix,
+        i,
+        j,
+        current_owner,
+        len(assignment_matrix),
+        len(assignment_matrix[0]),
+    )
 
     for new_owner in neighbors:
         temp_costs = total_costs.copy()
@@ -130,9 +145,7 @@ def _perform_local_improvements(
     n: int,
     improvements_per_iteration: int = 1,
 ) -> bool:
-    """
-    Виконує локальні покращення після заповнення матриці.
-    """
+    """Виконує локальні покращення після заповнення матриці."""
     improved = False
 
     for _ in range(improvements_per_iteration):
@@ -142,14 +155,14 @@ def _perform_local_improvements(
 
         # Вибираємо випадкову межову клітинку
         i, j = random.choice(border_cells)
-        if _try_improve_cell(assignment_matrix, matrix, total_costs, i, j, m, n):
+        if _calculate_improvement(assignment_matrix, matrix, total_costs, i, j):
             improved = True
             break
 
     return improved
 
 
-def _expansion_phase(
+def _run_expansion_phase(
     assignment_matrix: List[List[int]],
     matrix: List[List[int]],
     total_costs: Dict[int, int],
@@ -179,7 +192,7 @@ def _expansion_phase(
     return any_moved
 
 
-def _optimization_phase(
+def _run_optimization_phase(
     assignment_matrix: List[List[int]],
     matrix: List[List[int]],
     total_costs: Dict[int, int],
@@ -233,7 +246,7 @@ def greedy_algorithm(
 
         if not expansion_finished:
             # Фаза розширення
-            any_moved = _expansion_phase(
+            any_moved = _run_expansion_phase(
                 assignment_matrix,
                 matrix,
                 total_costs,
@@ -248,7 +261,7 @@ def greedy_algorithm(
 
         if expansion_finished:
             # Фаза локального покращення
-            any_moved = _optimization_phase(
+            any_moved = _run_optimization_phase(
                 assignment_matrix, matrix, total_costs, m, n, local_search_type
             )
 

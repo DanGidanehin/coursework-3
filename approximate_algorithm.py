@@ -1,5 +1,5 @@
 """
-approximate_algorithm.py (виправлена версія)
+approximate_algorithm.py (остаточно виправлена версія)
 
 Модуль реалізації наближеного (двоетапного) алгоритму розподілу ділянок
 між чотирма забудовниками з контролем відхилення вартості.
@@ -47,9 +47,7 @@ def _is_border_cell(
 def _find_border_cells(
     assignment_matrix: List[List[int]], m: int, n: int
 ) -> List[Tuple[int, int, int]]:
-    """
-    Знаходить всі клітинки на межі між забудовниками.
-    """
+    """Знаходить всі клітинки на межі між забудовниками."""
     border_cells = []
     for i in range(m):
         for j in range(n):
@@ -92,9 +90,7 @@ def _check_connectivity(
 def _can_transfer_cell(
     assignment_matrix: List[List[int]], i: int, j: int, new_owner: int, m: int, n: int
 ) -> bool:
-    """
-    Перевіряє, чи можна передати клітинку (i,j) новому власнику без порушення зв'язності.
-    """
+    """Перевіряє, чи можна передати клітинку без порушення зв'язності."""
     old_owner = assignment_matrix[i][j]
     assignment_matrix[i][j] = new_owner
 
@@ -131,6 +127,38 @@ def _get_neighbors(
     return neighbors
 
 
+def _try_local_improvement(
+    assignment_matrix: List[List[int]],
+    total_costs: Dict[int, int],
+    matrix: List[List[int]],
+    i: int,
+    j: int,
+    current_owner: int,
+    m: int,
+    n: int,
+) -> bool:
+    """Намагається покращити розподіл для конкретної клітинки."""
+    current_cost = matrix[i][j]
+    current_max_dev = max(total_costs.values()) - min(total_costs.values())
+    neighbors = _get_neighbors(assignment_matrix, i, j, current_owner, m, n)
+
+    for new_owner in neighbors:
+        # Перевіряємо покращення балансу
+        temp_costs = total_costs.copy()
+        temp_costs[current_owner] -= current_cost
+        temp_costs[new_owner] += current_cost
+        new_max_dev = max(temp_costs.values()) - min(temp_costs.values())
+
+        if new_max_dev < current_max_dev and _can_transfer_cell(
+            assignment_matrix, i, j, new_owner, m, n
+        ):
+            # Здійснюємо передачу
+            total_costs[current_owner] -= current_cost
+            total_costs[new_owner] += current_cost
+            return True
+    return False
+
+
 def _local_optimization_step(
     assignment_matrix: List[List[int]],
     total_costs: Dict[int, int],
@@ -138,33 +166,15 @@ def _local_optimization_step(
     m: int,
     n: int,
 ) -> bool:
-    """
-    Виконує один крок локальної оптимізації - намагається покращити розподіл.
-    """
+    """Виконує один крок локальної оптимізації."""
     border_cells = _find_border_cells(assignment_matrix, m, n)
     random.shuffle(border_cells)
 
-    current_max_dev = max(total_costs.values()) - min(total_costs.values())
-
     for i, j, current_owner in border_cells:
-        current_cost = matrix[i][j]
-        neighbors = _get_neighbors(assignment_matrix, i, j, current_owner, m, n)
-
-        for new_owner in neighbors:
-            # Перевіряємо покращення балансу
-            temp_costs = total_costs.copy()
-            temp_costs[current_owner] -= current_cost
-            temp_costs[new_owner] += current_cost
-            new_max_dev = max(temp_costs.values()) - min(temp_costs.values())
-
-            if new_max_dev < current_max_dev and _can_transfer_cell(
-                assignment_matrix, i, j, new_owner, m, n
-            ):
-                # Здійснюємо передачу
-                total_costs[current_owner] -= current_cost
-                total_costs[new_owner] += current_cost
-                return True
-
+        if _try_local_improvement(
+            assignment_matrix, total_costs, matrix, i, j, current_owner, m, n
+        ):
+            return True
     return False
 
 
@@ -220,23 +230,12 @@ def _expand_all(
     return moved
 
 
-def approximate_algorithm(
-    matrix: List[List[int]],
-    m: int,
-    n: int,
-    max_iterations: int,
-    stability_threshold: int,
-    local_search_type: str,
-) -> Dict[str, object]:
-    """
-    Наближений двоетапний алгоритм розподілу ділянок між чотирма забудовниками.
-
-    Args:
-        local_search_type: Тип локального пошуку (зараз не використовується,
-                          але залишено для сумісності з інтерфейсом)
-    """
-    start_time = time.time()
-
+def _initialize_algorithm(
+    matrix: List[List[int]], m: int, n: int
+) -> Tuple[
+    Dict[int, List[Tuple[int, int]]], Dict[int, int], List[List[int]], Dict[int, deque]
+]:
+    """Ініціалізує початковий стан алгоритму."""
     developers_area = {i: [] for i in range(1, 5)}
     total_costs = {i: 0 for i in range(1, 5)}
     assignment_matrix = [[0] * n for _ in range(m)]
@@ -249,6 +248,66 @@ def approximate_algorithm(
         assignment_matrix[x][y] = dev_id
 
     frontier = {i: deque(developers_area[i]) for i in range(1, 5)}
+    return developers_area, total_costs, assignment_matrix, frontier
+
+
+def _run_optimization_phase(
+    assignment_matrix: List[List[int]],
+    total_costs: Dict[int, int],
+    matrix: List[List[int]],
+    m: int,
+    n: int,
+    max_iterations: int,
+    stability_threshold: int,
+    local_search_type: str,
+) -> Tuple[int, int]:
+    """Запускає фазу локальної оптимізації."""
+    optimization_iterations = 0
+    stagnant_iters = 0
+    prev_max_dev = float("inf")
+
+    while (
+        optimization_iterations < max_iterations
+        and stagnant_iters < stability_threshold
+    ):
+
+        # Використовуємо local_search_type для контролю кількості спроб за ітерацію
+        attempts = 2 if local_search_type == "2" else 1
+
+        for _ in range(attempts):
+            if _local_optimization_step(assignment_matrix, total_costs, matrix, m, n):
+                break
+
+        _, max_dev = calculate_deviation(total_costs)
+
+        if max_dev >= prev_max_dev:
+            stagnant_iters += 1
+        else:
+            stagnant_iters = 0
+            prev_max_dev = max_dev
+
+        optimization_iterations += 1
+
+    return optimization_iterations, stagnant_iters
+
+
+def approximate_algorithm(
+    matrix: List[List[int]],
+    m: int,
+    n: int,
+    max_iterations: int,
+    stability_threshold: int,
+    local_search_type: str,
+) -> Dict[str, object]:
+    """
+    Наближений двоетапний алгоритм розподілу ділянок між чотирма забудовниками.
+    """
+    start_time = time.time()
+
+    # Ініціалізація
+    developers_area, total_costs, assignment_matrix, frontier = _initialize_algorithm(
+        matrix, m, n
+    )
 
     # ЕТАП 2: Розширення територій
     expansion_iterations = 0
@@ -263,33 +322,17 @@ def approximate_algorithm(
         expansion_iterations += 1
 
     # ЕТАП 3: Локальна оптимізація
-    optimization_iterations = 0
-    stagnant_iters = 0
-    prev_max_dev = float("inf")
     remaining_iterations = max_iterations - expansion_iterations
-
-    while (
-        optimization_iterations < remaining_iterations
-        and stagnant_iters < stability_threshold
-    ):
-
-        # Використовуємо local_search_type для контролю кількості спроб за ітерацію
-        attempts = 2 if local_search_type == "2" else 1
-        any_improvement = False
-
-        for _ in range(attempts):
-            if _local_optimization_step(assignment_matrix, total_costs, matrix, m, n):
-                any_improvement = True
-
-        _, max_dev = calculate_deviation(total_costs)
-
-        if max_dev >= prev_max_dev:
-            stagnant_iters += 1
-        else:
-            stagnant_iters = 0
-            prev_max_dev = max_dev
-
-        optimization_iterations += 1
+    optimization_iterations, _ = _run_optimization_phase(
+        assignment_matrix,
+        total_costs,
+        matrix,
+        m,
+        n,
+        remaining_iterations,
+        stability_threshold,
+        local_search_type,
+    )
 
     total_iterations = expansion_iterations + optimization_iterations
     exec_time = time.time() - start_time

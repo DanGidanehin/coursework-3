@@ -14,13 +14,6 @@ from exhaustive_search import exhaustive_search
 from helper_functions import generate_random_matrix
 
 
-"""
-Виправлений експеримент 3.4.1 для experiments.py
-"""
-
-from helper_functions import generate_random_matrix
-
-
 def experiment_3_4_1() -> tuple[list[int], list[float], list[float]]:
     """
     3.4.1.1 — Вплив кількості ітерацій наближеного алгоритму на точність і час.
@@ -31,9 +24,6 @@ def experiment_3_4_1() -> tuple[list[int], list[float], list[float]]:
         deviations: Середні відхилення для кожного значення ітерацій.
         times: Середній час виконання для кожного значення ітерацій.
     """
-    # Імпортуємо локально для уникнення циклічних залежностей
-    from approximate_algorithm import approximate_algorithm
-
     # Використовуємо більшу матрицю для більш складної задачі
     m, n = 8, 8  # Збільшили розмір
     num_tasks = 10
